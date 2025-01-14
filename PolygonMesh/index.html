@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Regular Polygon Mesh Example</title>
+  <style>
+    /* Fill the entire browser window */
+    html, body {
+      margin: 0; 
+      padding: 0;
+      height: 100%; 
+      overflow: hidden;
+    }
+  </style>
+</head>
+<body>
+  <!-- Three.js from jsDelivr CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/three@0.152.2/build/three.min.js"></script>
+
+  <script>
+    // 1. Define the function
+    function regularPolygonMesh(n, rad, innerColor, outerColor) {
+      const geometry = new THREE.BufferGeometry();
+      const positions = [];
+      const colors = [];
+
+      const centerColor = new THREE.Color(innerColor);
+      const perimeterColor = new THREE.Color(outerColor);
+
+      for (let i = 0; i < n; i++) {
+        const angle1 = (2 * Math.PI * i) / n;
+        const angle2 = (2 * Math.PI * (i + 1)) / n;
+
+        // Center vertex
+        positions.push(0, 0, 0);
+        colors.push(centerColor.r, centerColor.g, centerColor.b);
+
+        // Perimeter vertex i
+        const x1 = rad * Math.cos(angle1);
+        const y1 = rad * Math.sin(angle1);
+        positions.push(x1, y1, 0);
+        colors.push(perimeterColor.r, perimeterColor.g, perimeterColor.b);
+
+        // Perimeter vertex i+1
+        const x2 = rad * Math.cos(angle2);
+        const y2 = rad * Math.sin(angle2);
+        positions.push(x2, y2, 0);
+        colors.push(perimeterColor.r, perimeterColor.g, perimeterColor.b);
+      }
+
+      geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+      geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+      geometry.computeVertexNormals();
+
+      const material = new THREE.MeshBasicMaterial({
+        vertexColors: true,
+        side: THREE.DoubleSide
+      });
+
+      return new THREE.Mesh(geometry, material);
+    }
+
+    // 2. Basic Three.js setup
+    const scene = new THREE.Scene();
+
+    // Create a perspective camera
+    const camera = new THREE.PerspectiveCamera(
+      75, 
+      window.innerWidth / window.innerHeight,
+      0.1,
+      1000
+    );
+    camera.position.z = 5;
+
+    // Create a WebGL renderer
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    document.body.appendChild(renderer.domElement);
+
+    // 3. Create and add our polygon to the scene
+    //    Let's make an 8-sided polygon with a blue center and green perimeter
+    const myPolygon = regularPolygonMesh(8, 2, 0x0000FF, 0x00ff00);
+    scene.add(myPolygon);
+
+    // 4. Render loop
+    function animate() {
+      requestAnimationFrame(animate);
+      
+      // Rotate the polygon just for fun
+      myPolygon.rotation.z += 0.00005;
+      
+      renderer.render(scene, camera);
+    }
+    animate();
+
+    // 5. Handle window resize
+    window.addEventListener('resize', () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+  </script>
+</body>
+</html>
