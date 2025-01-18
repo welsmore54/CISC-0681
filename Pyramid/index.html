@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Torus Starburst</title>
+  <style>
+    body, html {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      background: black;
+      overflow: hidden;
+    }
+  </style>
+</head>
+<body>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.152.2/build/three.min.js"></script>
+  <script>
+    // Creates a spiky star shape using colored line segments
+    function createStarburst(burstRadius, numRays) {
+      const positions = [];
+      const colors = [];
+
+      for (let i = 0; i < numRays; i++) {
+        const u = Math.random();
+        const v = Math.random();
+        const theta = 2 * Math.PI * u;
+        const phi = Math.acos(2 * v - 1);
+
+        const dirX = Math.sin(phi) * Math.cos(theta);
+        const dirY = Math.sin(phi) * Math.sin(theta);
+        const dirZ = Math.cos(phi);
+
+        const x1 = -dirX * burstRadius;
+        const y1 = -dirY * burstRadius;
+        const z1 = -dirZ * burstRadius;
+        const x2 =  dirX * burstRadius;
+        const y2 =  dirY * burstRadius;
+        const z2 =  dirZ * burstRadius;
+
+        positions.push(x1, y1, z1, x2, y2, z2);
+
+        const color = new THREE.Color();
+        color.setHSL(Math.random(), 1.0, 0.5);
+        colors.push(color.r, color.g, color.b, color.r, color.g, color.b);
+      }
+
+      const geometry = new THREE.BufferGeometry();
+      geometry.setAttribute(
+        'position',
+        new THREE.Float32BufferAttribute(new Float32Array(positions), 3)
+      );
+      geometry.setAttribute(
+        'color',
+        new THREE.Float32BufferAttribute(new Float32Array(colors), 3)
+      );
+      geometry.computeBoundingSphere();
+
+      const material = new THREE.LineBasicMaterial({ vertexColors: true });
+      return new THREE.LineSegments(geometry, material);
+    }
+
+    // Places multiple starbursts randomly on a torus surface
+    function populateTorusWithStarbursts(R, r, count, burstRadius, maxRays) {
+      const group = new THREE.Group();
+
+      for (let i = 0; i < count; i++) {
+        const theta = 2 * Math.PI * Math.random();
+        const phi = 2 * Math.PI * Math.random();
+
+        const x = (R + r * Math.cos(phi)) * Math.cos(theta);
+        const y = (R + r * Math.cos(phi)) * Math.sin(theta);
+        const z = r * Math.sin(phi);
+
+        const numRays = Math.floor(Math.random() * (maxRays - 1)) + 5;
+        const star = createStarburst(burstRadius, numRays);
+
+        star.position.set(x, y, z);
+        group.add(star);
+      }
+
+      return group;
+    }
+
+    // Set up the scene, camera, and renderer
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(
+      75,
+      window.innerWidth / window.innerHeight,
+      0.1,
+      1000
+    );
+    camera.position.set(0, 0, 20);
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    document.body.appendChild(renderer.domElement);
+
+    // Define torus and starburst parameters
+    const majorRadius = 10;
+    const minorRadius = 1;
+    const nBursts = 300;
+    const burstRadius = 0.2;
+    const maxRays = 10; // up to 10 lines per star
+
+    // Create and position the torus starbursts
+    const torusStars = populateTorusWithStarbursts(
+      majorRadius,
+      minorRadius,
+      nBursts,
+      burstRadius,
+      maxRays
+    );
+    torusStars.rotation.x = Math.PI / 4;
+    scene.add(torusStars);
+
+    // Render loop
+    function animate() {
+      requestAnimationFrame(animate);
+      torusStars.rotation.z += 0.0; // adjust rotation if needed
+      torusStars.rotation.x += 0.003;
+      renderer.render(scene, camera);
+    }
+    animate();
+
+    // Adjust rendering on window resize
+    window.addEventListener('resize', () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+  </script>
+</body>
+</html>
