@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Random Boxes</title>
+  <style>
+    body, html {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      background: black;
+      overflow: hidden;
+    }
+  </style>
+</head>
+<body>
+  <script type="module">
+    import * as THREE from 'https://unpkg.com/three@0.126.1/build/three.module.js';
+    import { OrbitControls } from 'https://unpkg.com/three@0.126.1/examples/jsm/controls/OrbitControls.js';
+    
+    // Scene setup
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+    camera.position.set(0, 150, 250);
+    
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    document.body.appendChild(renderer.domElement);
+    
+    const controls = new OrbitControls(camera, renderer.domElement);
+    
+    // Floor setup
+    const floorGeometry = new THREE.PlaneGeometry(200, 200);
+    const floorMaterial = new THREE.MeshStandardMaterial({ color: 0x808080, side: THREE.DoubleSide });
+    const floor = new THREE.Mesh(floorGeometry, floorMaterial);
+    floor.rotation.x = -Math.PI / 2;
+    scene.add(floor);
+    
+    // Lighting
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+    scene.add(ambientLight);
+    const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+    directionalLight.position.set(50, 100, 50);
+    scene.add(directionalLight);
+    
+    // Function to generate random boxes
+    function randomBoxes(nbrBoxes, minSide, maxSide, minHeight, maxHeight) {
+      const group = new THREE.Group();
+      
+      for (let i = 0; i < nbrBoxes; i++) {
+        const width = THREE.MathUtils.randFloat(minSide, maxSide);
+        const depth = THREE.MathUtils.randFloat(minSide, maxSide);
+        const height = THREE.MathUtils.randFloat(minHeight, maxHeight);
+        
+        const geometry = new THREE.BoxGeometry(width, height, depth);
+        
+        const hue = Math.random();
+        const saturation = THREE.MathUtils.randFloat(0.8, 0.95);
+        const lightness = THREE.MathUtils.randFloat(0.3, 0.7);
+        const opacity = 0.8;
+        
+        const color = new THREE.Color().setHSL(hue, saturation, lightness);
+        const material = new THREE.MeshStandardMaterial({ color, transparent: true, opacity });
+        
+        const box = new THREE.Mesh(geometry, material);
+        
+        const xPos = THREE.MathUtils.randFloatSpread(200 - maxSide);
+        const zPos = THREE.MathUtils.randFloatSpread(200 - maxSide);
+        
+        box.position.set(xPos, height / 2, zPos);
+        
+        group.add(box);
+      }
+      
+      scene.add(group);
+    }
+    
+    // Generate boxes
+    randomBoxes(100, 5, 20, 5, 60);
+    
+    // Animation loop
+    function animate() {
+      requestAnimationFrame(animate);
+      controls.update();
+      renderer.render(scene, camera);
+    }
+    animate();
+    
+    // Handle window resize
+    window.addEventListener('resize', () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+  </script>
+</body>
+</html>

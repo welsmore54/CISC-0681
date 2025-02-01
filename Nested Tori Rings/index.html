@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nested Tori Rings</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+</head>
+<body style="margin: 0; overflow: hidden;">
+    <script>
+        // Scene, Camera, Renderer
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        // Orbit Controls
+        const controls = new THREE.OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.05;
+        controls.screenSpacePanning = false;
+        controls.minDistance = 5;
+        controls.maxDistance = 50;
+
+        // Lights
+        const light = new THREE.AmbientLight(0xffffff, 0.5);
+        scene.add(light);
+        const pointLight = new THREE.PointLight(0xffffff, 1);
+        pointLight.position.set(10, 10, 10);
+        scene.add(pointLight);
+
+        // Create Nested Tori
+        const tori = [];
+        const numTori = 10;
+
+        for (let i = 0; i < numTori; i++) {
+            const geometry = new THREE.TorusGeometry(2 + i * 1.2, 0.3, 16, 50);
+            const material = new THREE.MeshStandardMaterial({ color: new THREE.Color(`hsl(${Math.random() * 360}, 80%, 50%)`) });
+            const torus = new THREE.Mesh(geometry, material);
+            torus.rotation.x = Math.PI / 2;
+            scene.add(torus);
+            tori.push(torus);
+        }
+
+        // Center Sphere
+        const sphereGeometry = new THREE.SphereGeometry(0.5, 32, 32);
+        const sphereMaterial = new THREE.MeshStandardMaterial({ color: 0xffffff });
+        const sphere = new THREE.Mesh(sphereGeometry, sphereMaterial);
+        scene.add(sphere);
+
+        // Position Camera
+        camera.position.set(15, 7.5, 15);
+        controls.update();
+
+        // Animation Loop
+        function animate() {
+            requestAnimationFrame(animate);
+
+            tori.forEach((torus, index) => {
+                torus.rotation.z += 0.01 + index * 0.002;
+                torus.scale.setScalar(1 + 0.1 * Math.sin(Date.now() * 0.002 + index));
+            });
+
+            sphere.position.y = 0.3 * Math.sin(Date.now() * 0.005);
+
+            controls.update();
+            renderer.render(scene, camera);
+        }
+
+        animate();
+    </script>
+</body>
+</html>
