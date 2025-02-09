@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Space Simulation</title>
+  <style>
+    body { margin: 0; overflow: hidden; }
+    #info {
+      position: absolute;
+      top: 10px; left: 10px;
+      color: #fff;
+      background: rgba(0,0,0,0.5);
+      padding: 8px;
+      font-family: sans-serif;
+      border-radius: 4px;
+    }
+  </style>
+</head>
+<body>
+<div id="info">
+  <strong>Controls:</strong>  
+  <ul>
+    <li>Click the 3D canvas to <em>toggle</em> pointer lock on/off.</li>
+    <li>Move mouse to turn ship.</li>
+    <li>Mouse Wheel to adjust <strong>speed</strong> (watch the GUI update).</li>
+    <li>Press Space to boost forward (2× current speed).</li>
+    <li>Press ESC to release pointer lock as well.</li>
+    <li>Adjust GUI to flavor. (Some bugs may occur in crazier settings)</li>
+  </ul>
+</div>
+<script type="module">
+  // Stops default context menu from appearing on right-click
+  document.addEventListener("contextmenu", (e) => e.preventDefault());
+
+  import * as THREE from "https://unpkg.com/three@0.126.1/build/three.module.js";
+  import { GUI } from "https://cdn.jsdelivr.net/npm/dat.gui/build/dat.gui.module.js";
+
+  // Create the scene and WebGL renderer, then add it to the page
+  const scene = new THREE.Scene();
+  const renderer = new THREE.WebGLRenderer({ antialias: true });
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.shadowMap.enabled = true;
+  document.body.appendChild(renderer.domElement);
+
+  // Add lights for basic illumination (ambient + directional)
+  const ambientLight = new THREE.AmbientLight(0xffffff, 0.4);
+  scene.add(ambientLight);
+  const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+  directionalLight.position.set(10, 10, 10);
+  directionalLight.castShadow = true;
+  scene.add(directionalLight);
+
+  // Store configuration values for object counts, sizes, speed, etc.
+  const settings = {
+    asteroidCount: 20,
+    starCount: 750,
+    planetCount: 5,
+    speed: 0.2, // This also changes via mouse wheel
+    sizeAsteroid: 1,
+    sizeStar: 1,
+    sizePlanet: 10,
+    generalGenRadius: 1500,
+    planetGenRadius: 10000
+  };
+
+  // Create a GUI for adjusting settings and refreshing objects
+  const gui = new GUI();
+  gui.add(settings, "asteroidCount", 0, 100, 1).onFinishChange(spawnAllAsteroids);
+  gui.add(settings, "starCount", 0, 2000, 1).onFinishChange(spawnAllStars);
+  gui.add(settings, "planetCount", 0, 20, 1).onFinishChange(spawnAllPlanets);
+
+  // Keep a reference to the speed controller, using .listen() so it updates in real time
+  const speedController = gui.add(settings, "speed", 0.01, 5, 0.01).listen();
+
+  gui.add(settings, "sizeAsteroid", 0.1, 5, 0.1).onFinishChange(updateAllAsteroidSizes);
+  gui.add(settings, "sizeStar", 0.1, 5, 0.1).onFinishChange(updateAllStarSizes);
+  gui.add(settings, "sizePlanet", 0.1, 50, 0.1).onFinishChange(updateAllPlanetSizes);
+  gui.add(settings, "generalGenRadius", 500, 5000, 10);
+  gui.add(settings, "planetGenRadius", 1000, 20000, 1000);
+
+  // Separate yaw and pitch rotations into two objects
+  const yawObject = new THREE.Object3D();
+  const pitchObject = new THREE.Object3D();
+  yawObject.add(pitchObject);
+  scene.add(yawObject);
+
+  // Create a cone geometry for the ship and attach it to pitchObject
+  const shipGeometry = new THREE.ConeGeometry(0.5, 1.5, 10);
+  shipGeometry.rotateX(-Math.PI / 2);
+  const shipMaterial = new THREE.MeshBasicMaterial({ color: 0xffffff });
+  const ship = new THREE.Mesh(shipGeometry, shipMaterial);
+  ship.castShadow = true;
+  ship.position.set(0, 0, 0);
+  pitchObject.add(ship);
+
+  // Position camera behind the ship and attach it to pitchObject
+  const camera = new THREE.PerspectiveCamera(
+    75,
+    window.innerWidth / window.innerHeight,
+    0.1,
+    10000
+  );
+  camera.position.set(0, 3, 5);
+  camera.lookAt(ship.position);
+  pitchObject.add(camera);
+
+  // Track ship yaw and pitch, and clamp pitch to avoid flipping too far
+  let shipYaw = 0;
+  let shipPitch = 0;
+  const maxPitch = Math.PI / 2;
+
+  // Use spacebar for a speed boost
+  let boostHeld = false;
+  window.addEventListener("keydown", (e) => {
+    if (e.code === "Space") boostHeld = true;
+  });
+  window.addEventListener("keyup", (e) => {
+    if (e.code === "Space") boostHeld = false;
+  });
+
+  // Toggle pointer lock when clicking on the canvas
+  document.addEventListener("click", (e) => {
+    if (e.button === 0) {
+      // If pointer is already locked, exit it. Otherwise, request lock.
+      if (document.pointerLockElement === document.body) {
+        document.exitPointerLock();
+      } else {
+        // Request lock only if the click is on the renderer canvas
+        if (e.target === renderer.domElement) {
+          document.body.requestPointerLock();
+        }
+      }
+    }
+  });
+
+  // Update yaw and pitch using mouse movement when pointer is locked
+  document.addEventListener("mousemove", (e) => {
+    if (document.pointerLockElement !== document.body) return;
+    const mouseSensitivity = 0.002;
+    shipYaw   -= e.movementX * mouseSensitivity;
+    shipPitch -= e.movementY * mouseSensitivity;
+    if (shipPitch >  maxPitch) shipPitch =  maxPitch;
+    if (shipPitch < -maxPitch) shipPitch = -maxPitch;
+  });
+
+  // Scroll wheel changes the speed value within limits
+  document.addEventListener("wheel", (e) => {
+    // Stop page from scrolling with the wheel
+    e.preventDefault();
+
+    // Scale how quickly the wheel affects speed
+    const wheelSensitivity = 0.001;
+    settings.speed -= e.deltaY * wheelSensitivity;
+
+    // Clamp speed
+    if (settings.speed < 0.01) settings.speed = 0.01;
+    if (settings.speed > 5)    settings.speed = 5;
+
+    // The GUI updates automatically due to .listen() on the speed controller
+  }, { passive: false });
+
+  // Arrays to hold asteroids, stars, and planets
+  let asteroids = [];
+  let stars = [];
+  let planets = [];
+
+  // Create new objects at random positions around the ship
+  function getRandomPosition(radius) {
+    const theta = Math.random() * 2 * Math.PI;
+    const phi = Math.acos(2 * Math.random() - 1);
+    const r = Math.random() * radius;
+    return new THREE.Vector3(
+      r * Math.sin(phi) * Math.cos(theta),
+      r * Math.sin(phi) * Math.sin(theta),
+      r * Math.cos(phi)
+    );
+  }
+
+  function spawnAsteroid() {
+    const baseSize = Math.random() * 0.5 + 0.2;
+    const size = baseSize * settings.sizeAsteroid;
+    const geometry = new THREE.SphereGeometry(size, 8, 8);
+    const material = new THREE.MeshLambertMaterial({ color: 0x8B4513 });
+    const asteroid = new THREE.Mesh(geometry, material);
+    asteroid.castShadow = true;
+    asteroid.position.copy(yawObject.position).add(getRandomPosition(settings.generalGenRadius));
+    scene.add(asteroid);
+    asteroids.push(asteroid);
+  }
+
+  function spawnStar() {
+    const size = 0.3 * settings.sizeStar;
+    const geometry = new THREE.SphereGeometry(size, 6, 6);
+    const material = new THREE.MeshBasicMaterial({ color: 0xffffff });
+    const star = new THREE.Mesh(geometry, material);
+    star.position.copy(yawObject.position).add(getRandomPosition(settings.generalGenRadius));
+    scene.add(star);
+    stars.push(star);
+  }
+
+  function spawnPlanet() {
+    const baseSize = Math.random() * 5 + 5;
+    const size = baseSize * settings.sizePlanet;
+    const geometry = new THREE.SphereGeometry(size, 16, 16);
+    const color = new THREE.Color(Math.random(), Math.random(), Math.random());
+    const material = new THREE.MeshPhongMaterial({ color: color, shininess: 20 });
+    const planet = new THREE.Mesh(geometry, material);
+    planet.castShadow = true;
+    planet.receiveShadow = true;
+    planet.position.copy(yawObject.position).add(getRandomPosition(settings.planetGenRadius));
+    scene.add(planet);
+    planets.push(planet);
+  }
+
+  // Spawn initial groups of asteroids, stars, and planets
+  for (let i = 0; i < settings.asteroidCount; i++) spawnAsteroid();
+  for (let i = 0; i < settings.starCount; i++) spawnStar();
+  for (let i = 0; i < settings.planetCount; i++) spawnPlanet();
+
+  // Functions to remove existing objects and spawn new ones, or update sizes
+  function spawnAllAsteroids() {
+    asteroids.forEach(obj => scene.remove(obj));
+    asteroids = [];
+    for (let i = 0; i < settings.asteroidCount; i++) spawnAsteroid();
+  }
+  function spawnAllStars() {
+    stars.forEach(obj => scene.remove(obj));
+    stars = [];
+    for (let i = 0; i < settings.starCount; i++) spawnStar();
+  }
+  function spawnAllPlanets() {
+    planets.forEach(obj => scene.remove(obj));
+    planets = [];
+    for (let i = 0; i < settings.planetCount; i++) spawnPlanet();
+  }
+
+  function updateAllAsteroidSizes() {
+    asteroids.forEach(ast => {
+      ast.scale.set(settings.sizeAsteroid, settings.sizeAsteroid, settings.sizeAsteroid);
+    });
+  }
+  function updateAllStarSizes() {
+    stars.forEach(star => {
+      star.scale.set(settings.sizeStar, settings.sizeStar, settings.sizeStar);
+    });
+  }
+  function updateAllPlanetSizes() {
+    planets.forEach(planet => {
+      planet.scale.set(settings.sizePlanet, settings.sizePlanet, settings.sizePlanet);
+    });
+  }
+
+  // Move the yawObject forward, doubling speed when boosting
+  function moveShipForward() {
+    const moveSpeed = boostHeld ? settings.speed * 2 : settings.speed;
+    const forward = new THREE.Vector3(0, 0, -1);
+    forward.applyEuler(new THREE.Euler(shipPitch, shipYaw, 0, "YXZ"));
+    yawObject.position.add(forward.multiplyScalar(moveSpeed));
+  }
+
+  // If objects move outside the radius, place them near the ship again
+  function repositionIfFar(object) {
+    const dist = object.position.distanceTo(yawObject.position);
+    if (planets.includes(object)) {
+      if (dist > settings.planetGenRadius) {
+        object.position.copy(yawObject.position).add(getRandomPosition(settings.planetGenRadius));
+      }
+    } else {
+      if (dist > settings.generalGenRadius) {
+        object.position.copy(yawObject.position).add(getRandomPosition(settings.generalGenRadius));
+      }
+    }
+  }
+
+  // Update rotations, move the ship, reposition objects, then render
+  function animate() {
+    requestAnimationFrame(animate);
+
+    yawObject.rotation.y = shipYaw;
+    pitchObject.rotation.x = shipPitch;
+
+    moveShipForward();
+
+    asteroids.forEach(repositionIfFar);
+    stars.forEach(repositionIfFar);
+    planets.forEach(repositionIfFar);
+
+    renderer.render(scene, camera);
+  }
+  animate();
+
+  // Adjust camera and renderer on window resize
+  window.addEventListener("resize", () => {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+  });
+</script>
+</body>
+</html>
